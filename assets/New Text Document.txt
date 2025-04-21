@@ -1,0 +1,162 @@
+package app
+
+import "core:fmt"
+
+List :: struct(T: typeid) {
+	items: []T,
+	first: ^T,
+	head: ^T,
+	free: ^T,
+	len: int,
+}
+
+list_init :: proc($T: typeid, max_items:int) -> List(T) {
+	list : List(T)
+	list.items = make([]T, max_items)
+	list.len = 0
+
+	for item, i in &list.items {
+		if i == 0 do list.free = &item
+		if i < max_items-1 do item.next = &list.items[i + 1]
+	}
+
+	return list
+}
+
+list_temp :: proc($T: typeid, max_items:int) -> List(T) {
+	list : List(T)
+	list.items = make([]T, max_items, context.temp_allocator)	
+
+	free := &list.items[0]
+	list.free = free
+
+	list.first = nil
+	list.head = nil
+	list.len = 0
+	return list
+}
+
+list_temp_push :: proc(list: ^List($Q), _item: $T) -> ^T {
+	item := list.free
+	assert((list.len < len(list.items)), "LIST IS FULL!")
+
+	list.free = item.next
+	if list.free == nil {
+		if list.len+1 >= len(list.items)-1 {
+			fmt.println("list is full!")
+			return nil
+		}
+		list.free = &list.items[list.len+1]
+	}
+	assert(list.free != nil, "free node is nil!")
+
+	item.next = nil
+	item.prev = list.head
+
+	if list.head != nil do list.head.next = item
+	if list.first == nil do list.first = item
+	list.head = item
+	list.len += 1
+
+	next := item.next
+	prev := item.prev
+	item^ = _item
+	item.next = next
+	item.prev = prev
+
+	return item
+}
+
+list_temp_eat :: proc(list: ^List($Q), item: $T) {
+	if list.len > 0 {
+		prev := item.prev
+		next := item.next
+		if prev != nil do prev.next = next
+		if next != nil do next.prev = prev
+		list.len -= 1
+	}
+}
+
+list_push :: proc(list: ^List($Q), _item: $T) -> ^T {
+	item := list.free
+	assert((list.len < len(list.items)), "LIST IS FULL!")
+
+	list.free = item.next
+	item.next = nil
+	item.prev = list.head
+	
+	if list.first == nil {
+		list.first = item
+	} else {
+		list.head.next = item
+	}
+
+	list.head = item
+	list.len += 1
+
+	next := item.next
+	prev := item.prev
+	item^ = _item
+	item.next = next
+	item.prev = prev
+
+	return item
+}
+
+list_pop :: proc(list: ^List($T)) {
+	if list.len > 0 {
+		to_pop := list.head
+		list.head = to_pop.prev // could be nil
+		if to_pop == list.first {
+			list.first = nil
+			list.head = nil
+		} else {
+			list.head.next = nil
+		}
+		list_push_to_free(list, to_pop)
+		list.len -= 1
+	}
+}
+
+list_eat :: proc(list: ^List($Q), item: ^$T) {
+	if list.len > 0 {
+		if item == list.head {
+		// if item is last
+			list_pop(list)
+		} else if item == list.first {
+		// if item is first
+			if item == list.head {
+				list.head = nil
+				list.first = nil
+			} else {
+				list.first = item.next
+				list.first.prev = nil
+
+			}
+			list_push_to_free(list, item)
+
+			list.len -= 1
+		} else {
+		// if item is in the middle
+			item.prev.next = item.next
+			item.next.prev = item.prev
+			list_push_to_free(list, item)
+			list.len -= 1
+		}
+	}
+}
+
+list_push_to_free :: proc(list: ^List($Q), item: ^$T) {
+	item^ = {}
+	item.next = list.free
+	list.free = item
+}
+
+check_list :: proc(list: ^List($Q), item: ^$T) {
+	fmt.println(">>>>>>>>>")
+	fmt.println("new item", rawptr(item))
+	fmt.println("len ", list.len)
+	fmt.println("head", rawptr(list.head))
+	fmt.println("frst", rawptr(list.first))
+	fmt.println("free", rawptr(list.free))
+}
